@@ -15,3 +15,7 @@ Key|Effect
 ## Missing Features
 
 * Syntax highlighting isn't implemented yet
+
+## Building
+
+Requires Rust nightly. Build using `cargo build`.

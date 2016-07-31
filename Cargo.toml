@@ -1,0 +1,7 @@
+[package]
+name = "kilo_rust"
+version = "0.1.0"
+authors = ["Sam Roth <sam-roth@users.noreply.github.com>"]
+
+[dependencies]
+libc = "*"

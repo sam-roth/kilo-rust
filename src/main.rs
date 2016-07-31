@@ -5,7 +5,7 @@
 
 extern crate libc;
 
-mod lowlevel;
+mod low_level;
 mod read_key;
 mod editor;
 

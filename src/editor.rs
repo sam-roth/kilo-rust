@@ -5,7 +5,7 @@ use std::time::Instant;
 use std::{io, fs};
 
 use libc;
-use lowlevel;
+use low_level;
 use read_key;
 
 fn uclamp(a: isize) -> usize {
@@ -212,7 +212,7 @@ impl Editor {
             return Ok(());      // already in raw mode
         }
 
-        let mut raw = lowlevel::get_termios(fd)?;
+        let mut raw = low_level::get_termios(fd)?;
         let orig_termios = raw.clone();
 
         if unsafe { isatty(fd) } == 0 {
@@ -234,7 +234,7 @@ impl Editor {
         // 1 decisecond timeout
         raw.c_cc[VTIME] = 1;
 
-        lowlevel::set_termios(fd, TCSAFLUSH, &raw)?;
+        low_level::set_termios(fd, TCSAFLUSH, &raw)?;
 
         self.orig_termios = Some(orig_termios);
 
@@ -243,7 +243,7 @@ impl Editor {
 
     fn disable_raw_mode(&mut self) -> io::Result<()> {
         if let Some(cooked) = self.orig_termios {
-            lowlevel::set_termios(libc::STDIN_FILENO, libc::TCSAFLUSH, &cooked)?;
+            low_level::set_termios(libc::STDIN_FILENO, libc::TCSAFLUSH, &cooked)?;
             self.orig_termios = None;
         }
 

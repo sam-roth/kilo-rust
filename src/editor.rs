@@ -7,6 +7,7 @@ use std::{io, fs};
 use libc;
 use low_level;
 use read_key;
+use syntax;
 
 fn uclamp(a: isize) -> usize {
     if a < 0 {
@@ -114,16 +115,15 @@ fn get_window_size() -> io::Result<Pos> {
 struct Row {
     text: String,
     render: String,
+    highlight: Option<Vec<syntax::Highlight>>,
 }
 
 impl Row {
-    fn new(text: String) -> Row {
-        let mut result: Row = Default::default();
-        result.update(text);
-        result
+    fn new() -> Row {
+        Default::default()
     }
 
-    fn update(&mut self, text: String) {
+    fn update(&mut self, text: String, syntax: &Option<syntax::Syntax>) {
         self.text = text;
         self.render.clear();
 
@@ -137,6 +137,12 @@ impl Row {
             } else {
                 self.render.push(ch);
             }
+        }
+
+        if let &Some(ref syntax) = syntax {
+            self.highlight = Some(syntax.highlight(&self.render));
+        } else {
+            self.highlight = None;
         }
     }
 }
@@ -156,6 +162,7 @@ pub struct Editor {
 
     file_path: Option<PathBuf>,
     status_msg: Option<StatusMessage>,
+    syntax: Option<syntax::Syntax>,
 }
 
 impl Editor {
@@ -166,6 +173,7 @@ impl Editor {
         let mut result: Editor = Default::default();
         result.screen = screen;
         result.cursor.x = 1;
+        result.syntax = Some(syntax::make_rust_syntax());
 
         Ok(result)
     }
@@ -177,7 +185,9 @@ impl Editor {
         self.rows.clear();
 
         for line in reader.lines() {
-            self.rows.push(Row::new(line?));
+            let mut row = Row::new();
+            row.update(line?, &self.syntax);
+            self.rows.push(row);
         }
 
         self.file_path = Some(PathBuf::from(path));
@@ -297,7 +307,32 @@ impl Editor {
                 .take(self.screen.x)
                 .collect();
 
-            buf.extend(trimmed_row.as_bytes());
+            if let Some(ref highlight) = row.highlight {
+                let mut current_color = None;
+
+                let trimmed_highlight = highlight.iter()
+                    .skip(self.offset.x)
+                    .take(self.screen.x);
+
+                for (ch, hl) in trimmed_row.chars().zip(trimmed_highlight) {
+                    let color = hl.color();
+                    let color_changed = match current_color {
+                        None => true,
+                        Some(c) if c != color => true,
+                        _ => false,
+                    };
+
+                    if color_changed {
+                        buf.extend(format!("\x1b[{}m", color).as_bytes());
+                        current_color = Some(color);
+                    }
+
+                    buf.extend(ch.encode_utf8().as_slice());
+                }
+                buf.extend(b"\x1b[0m");
+            } else {
+                buf.extend(trimmed_row.as_bytes());
+            }
             buf.extend(b"\x1b[0K\r\n");
         }
 
@@ -476,7 +511,7 @@ impl Editor {
 
     fn ensure_line_exists(&mut self) {
         while self.rows.len() <= self.cursor.y {
-            self.rows.push(Row::new("".to_owned()));
+            self.rows.push(Row::new());
         }
     }
 
@@ -491,7 +526,7 @@ impl Editor {
 
         let mut row_text = row.text.clone();
         row_text.insert(cursor_fixup.x, ch);
-        row.update(row_text);
+        row.update(row_text, &self.syntax);
 
         self.cursor.x += 1;
     }
@@ -508,10 +543,11 @@ impl Editor {
             let row: &mut Row = &mut self.rows[y];
             row_left = (&row.text[..x]).to_owned();
             row_right = (&row.text[x..]).to_owned();
-            row.update(row_left);
+            row.update(row_left, &self.syntax);
         }
 
-        let new_row = Row::new(row_right);
+        let mut new_row = Row::new();
+        new_row.update(row_right, &self.syntax);
         let new_row_y = y + 1;
 
         self.rows.insert(new_row_y, new_row);
@@ -535,13 +571,13 @@ impl Editor {
             let mut new_row_text = self.rows[new_y].text.clone();
             new_row_text.push_str(&lower_row.text);
 
-            self.rows[new_y].update(new_row_text);
+            self.rows[new_y].update(new_row_text, &self.syntax);
 
             self.move_cursor_to(Pos {x: new_x, y: new_y});
         } else {
             let mut row_text = self.rows[y].text.clone();
             row_text.remove(x - 1);
-            self.rows[y].update(row_text);
+            self.rows[y].update(row_text, &self.syntax);
             self.move_cursor_to(Pos {x: x - 1, y: y});
         }
     }

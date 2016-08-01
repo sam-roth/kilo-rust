@@ -1,13 +1,16 @@
 #![feature(question_mark,
            range_contains,
-           inclusive_range_syntax)]
+           inclusive_range_syntax,
+           unicode,
+           slice_patterns)]
 #![warn(trivial_numeric_casts)]
 
 extern crate libc;
 
+mod editor;
 mod low_level;
 mod read_key;
-mod editor;
+mod syntax;
 
 use std::path::Path;
 use std::{io, env, process};

@@ -12,10 +12,6 @@ Key|Effect
 `C-q`|Quit
 `C-f`|Find string in file (navigate with arrow keys, `Esc` to cancel, `Enter` to accept)
 
-## Missing Features
-
-* Syntax highlighting isn't implemented yet
-
 ## Building
 
 Requires Rust nightly. Build using `cargo build`.

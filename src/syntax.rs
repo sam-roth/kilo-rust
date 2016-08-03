@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::iter::{Iterator, Peekable};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Highlight {
     Normal,
     Nonprint,
@@ -42,8 +42,16 @@ fn peek<Iter, Item>(iter: &Iter, count: usize) -> Vec<Item>
     iter.take(count).collect()
 }
 
+#[derive(Debug)]
+pub struct HighlightResult {
+    pub highlight: Vec<Highlight>,
+    pub initial_state: Highlight,
+    pub ending_state: Highlight,
+}
+
 impl Syntax {
-    pub fn highlight(&self, s: &str) -> Vec<Highlight> {
+    pub fn highlight(&self, initial_state: Highlight, s: &str) -> HighlightResult {
+        let mut ending_state = Highlight::Normal;
         let mut result = vec![];
         let mut it = s.chars().peekable();
 
@@ -53,6 +61,17 @@ impl Syntax {
                     result.push($highlight);
                 }
             }};
+        }
+
+        if initial_state == Highlight::MultiLineComment {
+            let (count, continues) = multiline_comment_count(&mut it);
+            if continues {
+                ending_state = Highlight::MultiLineComment;
+            }
+
+            classify!(count, Highlight::MultiLineComment);
+        } else if initial_state != Highlight::Normal {
+            panic!("initial_state must be MultiLineComment or Normal");
         }
 
         loop {
@@ -114,8 +133,19 @@ impl Syntax {
                 &['/', '/'] => {
                     classify!(it.by_ref().count(), Highlight::Comment);
                 },
-                // &['/', '*'] => {
-                // },
+                &['/', '*'] => {
+                    it.next();
+                    it.next();
+
+                    let (rest_count, continues) = multiline_comment_count(&mut it);
+                    let count = 2 + rest_count;
+
+                    if continues {
+                        ending_state = Highlight::MultiLineComment;
+                    }
+
+                    classify!(count, Highlight::MultiLineComment);
+                },
                 &[] => {
                     break;
                 },
@@ -125,7 +155,12 @@ impl Syntax {
                 },
             }
         }
-        result
+
+        HighlightResult{
+            highlight: result,
+            initial_state: initial_state,
+            ending_state: ending_state,
+        }
     }
 }
 
@@ -140,6 +175,34 @@ macro_rules! string_set_helper {
 macro_rules! string_set {
     ($($x:expr),*) => { string_set_helper![$($x),*] };
     ($($x:expr,)*) => { string_set_helper![$($x),*] };
+}
+
+fn multiline_comment_count<I>(iter: &mut I) -> (usize, bool)
+        where I: Iterator<Item=char> {
+    let mut count = 0;
+
+    loop {
+        let ch = iter.next();
+        match ch {
+            Some('*') => match iter.next() {
+                Some('/') => {
+                    return (count + 2, false);
+                },
+                None => {
+                    return (count + 1, true);
+                },
+                _ => {
+                    count += 2;
+                }
+            },
+            None => {
+                return (count, true);
+            },
+            _ => {
+                count += 1;
+            },
+        }
+    }
 }
 
 pub fn make_rust_syntax() -> Syntax {

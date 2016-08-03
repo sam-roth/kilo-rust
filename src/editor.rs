@@ -115,7 +115,7 @@ fn get_window_size() -> io::Result<Pos> {
 struct Row {
     text: String,
     render: String,
-    highlight: Option<Vec<syntax::Highlight>>,
+    highlight: Option<syntax::HighlightResult>,
 }
 
 impl Row {
@@ -123,7 +123,7 @@ impl Row {
         Default::default()
     }
 
-    fn update(&mut self, text: String, syntax: &Option<syntax::Syntax>) {
+    fn update(&mut self, text: String) {
         self.text = text;
         self.render.clear();
 
@@ -139,11 +139,7 @@ impl Row {
             }
         }
 
-        if let &Some(ref syntax) = syntax {
-            self.highlight = Some(syntax.highlight(&self.render));
-        } else {
-            self.highlight = None;
-        }
+        self.highlight = None;
     }
 }
 
@@ -185,9 +181,10 @@ impl Editor {
         self.rows.clear();
 
         for line in reader.lines() {
-            let mut row = Row::new();
-            row.update(line?, &self.syntax);
+            let row = Row::new();
             self.rows.push(row);
+            let new_index = self.rows.len() - 1;
+            self.update_row(new_index, line?);
         }
 
         self.file_path = Some(PathBuf::from(path));
@@ -286,6 +283,60 @@ impl Editor {
         }
     }
 
+    fn row_needs_rehighlight(&self, index: usize) -> bool {
+        if let None = self.syntax {
+            return false;
+        }
+
+        if index == 0 {
+            return if let Some(_) = self.rows[index].highlight {
+                false
+            } else {
+                true
+            };
+        }
+
+        if let Some(ref hl_line) = self.rows[index].highlight {
+            if let Some(ref hl_above) = self.rows[index - 1].highlight {
+                hl_line.initial_state != hl_above.ending_state
+            } else {
+                panic!("row highlighted before above row");
+            }
+        } else {
+            true
+        }
+    }
+
+    fn update_row(&mut self, mut index: usize, text: String) {
+        self.rows[index].update(text);
+
+        if let Some(ref syntax) = self.syntax {
+            loop {
+                if index >= self.rows.len() {
+                    break;
+                }
+
+                if self.row_needs_rehighlight(index) {
+                    let init_state =
+                        if index > 0 {
+                            if let Some(ref hl) = self.rows[index - 1].highlight {
+                                hl.ending_state
+                            } else {
+                                syntax::Highlight::Normal
+                            }
+                        } else {
+                            syntax::Highlight::Normal
+                        };
+                    let row = &mut self.rows[index];
+                    let highlight_res = syntax.highlight(init_state, &row.render);
+                    row.highlight = Some(highlight_res);
+                }
+
+                index += 1;
+            }
+        }
+    }
+
     pub fn refresh_screen(&mut self) -> io::Result<()> {
         let mut buf: Vec<u8> = vec![];
 
@@ -310,7 +361,7 @@ impl Editor {
             if let Some(ref highlight) = row.highlight {
                 let mut current_color = None;
 
-                let trimmed_highlight = highlight.iter()
+                let trimmed_highlight = highlight.highlight.iter()
                     .skip(self.offset.x)
                     .take(self.screen.x);
 
@@ -522,11 +573,16 @@ impl Editor {
 
         let cursor_fixup = self.fixup(self.cursor);
 
-        let row: &mut Row = &mut self.rows[self.cursor.y];
+        let mut row_text;
 
-        let mut row_text = row.text.clone();
+        {
+            let row: &Row = &self.rows[self.cursor.y];
+            row_text = row.text.clone();
+        }
         row_text.insert(cursor_fixup.x, ch);
-        row.update(row_text, &self.syntax);
+
+        let row_index = self.cursor.y;
+        self.update_row(row_index, row_text);
 
         self.cursor.x += 1;
     }
@@ -540,17 +596,18 @@ impl Editor {
         let row_right: String;
 
         {
-            let row: &mut Row = &mut self.rows[y];
+            let row: &Row = &mut self.rows[y];
             row_left = (&row.text[..x]).to_owned();
             row_right = (&row.text[x..]).to_owned();
-            row.update(row_left, &self.syntax);
         }
 
-        let mut new_row = Row::new();
-        new_row.update(row_right, &self.syntax);
+        self.update_row(y, row_left);
+
+        let new_row = Row::new();
         let new_row_y = y + 1;
 
         self.rows.insert(new_row_y, new_row);
+        self.update_row(new_row_y, row_right);
         self.move_cursor_to(Pos {x: 0, y: new_row_y});
     }
 
@@ -571,13 +628,13 @@ impl Editor {
             let mut new_row_text = self.rows[new_y].text.clone();
             new_row_text.push_str(&lower_row.text);
 
-            self.rows[new_y].update(new_row_text, &self.syntax);
+            self.update_row(new_y, new_row_text);
 
             self.move_cursor_to(Pos {x: new_x, y: new_y});
         } else {
             let mut row_text = self.rows[y].text.clone();
             row_text.remove(x - 1);
-            self.rows[y].update(row_text, &self.syntax);
+            self.update_row(y, row_text);
             self.move_cursor_to(Pos {x: x - 1, y: y});
         }
     }

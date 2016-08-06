@@ -4,14 +4,12 @@ use std::iter::{Iterator, Peekable};
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Highlight {
     Normal,
-    Nonprint,
     Comment,
     MultiLineComment,
     PrimaryKeyword,
     SecondaryKeyword,
     String,
     Number,
-    Match,
 }
 
 impl Highlight {
@@ -23,8 +21,7 @@ impl Highlight {
             SecondaryKeyword => 32,           // green
             String => 35,                     // magenta
             Number => 31,                     // red
-            Match => 34,                      // blue
-            Normal | Nonprint => 0,           // white
+            Normal => 0,                      // white
         }
     }
 }

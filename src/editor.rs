@@ -169,9 +169,14 @@ impl Editor {
         let mut result: Editor = Default::default();
         result.screen = screen;
         result.cursor.x = 1;
-        result.syntax = Some(syntax::make_rust_syntax());
+        result.syntax = None;
 
         Ok(result)
+    }
+
+    pub fn set_syntax(&mut self, syntax: Option<syntax::Syntax>) {
+        self.syntax = syntax;
+        self.update_row_highlight(0);
     }
 
     pub fn open(&mut self, path: &Path) -> io::Result<()> {
@@ -307,9 +312,12 @@ impl Editor {
         }
     }
 
-    fn update_row(&mut self, mut index: usize, text: String) {
+    fn update_row(&mut self, index: usize, text: String) {
         self.rows[index].update(text);
+        self.update_row_highlight(index);
+    }
 
+    fn update_row_highlight(&mut self, mut index: usize) {
         if let Some(ref syntax) = self.syntax {
             loop {
                 if index >= self.rows.len() {

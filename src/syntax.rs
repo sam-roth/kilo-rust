@@ -1,5 +1,6 @@
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::iter::{Iterator, Peekable};
+use std::rc::Rc;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Highlight {
@@ -26,7 +27,7 @@ impl Highlight {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Syntax {
     pub file_extensions: HashSet<String>,
     pub primary_keywords: HashSet<String>,
@@ -204,7 +205,7 @@ fn multiline_comment_count<I>(iter: &mut I) -> (usize, bool)
 
 pub fn make_rust_syntax() -> Syntax {
     let mut result = Syntax {
-        file_extensions: string_set![".rs"],
+        file_extensions: string_set!["rs"],
         primary_keywords: string_set![
             "as", "break", "const", "continue", "crate", "else",
             "enum", "extern", "false", "fn", "for", "if", "impl",
@@ -220,6 +221,20 @@ pub fn make_rust_syntax() -> Syntax {
     for prefix in &["u", "i"] {
         for suffix in &["8", "16", "32", "64", "size"] {
             result.secondary_keywords.insert(format!("{}{}", prefix, suffix));
+        }
+    }
+
+    result
+}
+
+pub fn make_syntax_db() -> HashMap<String, Rc<Syntax>> {
+    let syntaxes = vec![make_rust_syntax()];
+    let mut result: HashMap<String, Rc<Syntax>> = HashMap::new();
+
+    for syntax in syntaxes {
+        let syntax = Rc::new(syntax);
+        for extension in &syntax.file_extensions {
+            result.insert(extension.clone(), syntax.clone());
         }
     }
 
